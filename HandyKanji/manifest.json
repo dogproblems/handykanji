@@ -1,0 +1,19 @@
+{
+  "manifest_version": 2,
+  "name": "HandyKanji",
+  "version": "0.3",
+  "description": "Looks up kanji in Wiktionary for you",
+  "permissions": ["activeTab", "storage"],
+  "background": {
+    "page": "background.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["main.js"],
+      "css": ["main.css"],
+      "run_at": "document_end",
+      "all_frames": true
+    }
+  ]
+}
