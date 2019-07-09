@@ -6,6 +6,7 @@ div#hk_popup {
 	background-color: #FFF;
 	color: #333;
 	border: 1px solid #333;
+	padding: 10px;
 }
 
 div#hk_popup span.kanji {

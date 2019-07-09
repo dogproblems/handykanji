@@ -1,19 +1,3 @@
-
-var hkstate = {
-	'lastchar' : ''
-};
-    
-searchWiktionary = function(word){
-  var query = word.selectionText;
-  chrome.tabs.create({url: `https://en.wiktionary.org/wiki/${query}#Japanese`});
-};
-/*
-chrome.contextMenus.create({
-  title: "Search in Wiktionary",
-  contexts:["selection"],
-  onclick: searchWiktionary
-});*/
-
 function textNodesUnder(el) {
   var n, a=[], walk=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null,false);
   while(n=walk.nextNode()) a.push(n);
@@ -24,8 +8,8 @@ function isKanji(c) {
 	return /^[\u4e00-\u9faf]+$/.test(c);
 }
 
-function wrapKanji() {
-	nodes = textNodesUnder(document);
+function wrapKanji(el) {
+	nodes = textNodesUnder(el);
 	buffer = '';
 	nodes.forEach(function(node) {
 		parent = node.parentNode;
@@ -90,7 +74,7 @@ function makePopup(data) {
 			}			
 		}
 		
-		reHTML = '<h4>Readings</h4><ul>';
+		reHTML = '<ul>';
 				
 		for (var type in data.readings) {
 			if(data.readings.hasOwnProperty(type)) {
@@ -250,9 +234,6 @@ function showKanjiData(kanji, span) {
 			xhr = new XMLHttpRequest();
       		xhr.addEventListener('load', requestListener);
 			xhr.open('GET', url);
-			//xhr.setRequestHeader('Content-Type', 'application/xml');
-			//xhr.overrideMimeType('application/xml');
-			//xhr.responseType = 'document';
 			xhr.send();
 			makePopup(null);
 			showPopup(span);
@@ -289,7 +270,7 @@ function bindMouseEvents() {
 	});	
 };
 
-wrapKanji();
+wrapKanji(document);
 bindMouseEvents();
 
 /*
