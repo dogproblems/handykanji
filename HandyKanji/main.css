@@ -2,7 +2,7 @@ div#hk_popup {
 	font-family: sans-serif;
 	position: absolute;
 	z-index: 999;
-	display: hidden;
+	display: none;
 	background-color: #FFF;
 	color: #333;
 	border: 1px solid #333;

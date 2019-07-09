@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "HandyKanji",
-  "version": "0.3",
+  "version": "0.4",
   "description": "Looks up kanji in Wiktionary for you",
   "permissions": ["activeTab", "storage"],
   "background": {

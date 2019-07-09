@@ -1,3 +1,26 @@
+var obs = new MutationObserver(function(mutations) {
+
+	//console.log(mutations);
+	
+	key = 'mutated';
+	data = {};
+	data[key] = {mutated : true};
+
+	try {			
+		chrome.storage.local.set(data, function() {
+			if (chrome.extension.lastError) {
+				console.log('An error occurred: ' + chrome.extension.lastError.message);
+			} else {
+				chrome.storage.local.get(key, function(data) {});
+			}
+		});
+	} catch(e) {
+		console.log('An exception occurred: ' + e);
+	}
+	
+	
+});
+
 function textNodesUnder(el) {
   var n, a=[], walk=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null,false);
   while(n=walk.nextNode()) a.push(n);
@@ -8,53 +31,88 @@ function isKanji(c) {
 	return /^[\u4e00-\u9faf]+$/.test(c);
 }
 
-function wrapKanji(el) {
-	nodes = textNodesUnder(el);
+function wrapKanji(node) {
+	parent = node.parentNode;
+	text = node.nodeValue;
+	newnodes = [];
+
+	for (i=0; i<text.length; i++) {
+		c = text[i];
+		if (isKanji(c)) {
+			if(buffer != '') {
+				textNode = document.createTextNode(buffer);
+				newnodes.push(textNode);
+				buffer = '';
+			}				
+			span = document.createElement('span');
+			span.setAttribute('class', 'hk_hoverable');
+			span.innerText = c;
+			newnodes.push(span);
+		} else {
+			buffer += c;
+		}
+	}
+
+	if(buffer != '') {
+		textNode = document.createTextNode(buffer);
+		newnodes.push(textNode);
+		buffer = '';
+	}				
+
+	newnodes.forEach(function(newnode) {
+		parent.insertBefore(newnode, node);
+	});
+
+}
+
+function wrapAllKanji() {
+	clearMutationObserver();
+	nodes = textNodesUnder(document);
 	buffer = '';
 	nodes.forEach(function(node) {
-		parent = node.parentNode;
-		text = node.nodeValue;
-		newnodes = [];
-
-		for (i=0; i<text.length; i++) {
-			c = text[i];
-			if (isKanji(c)) {
-				if(buffer != '') {
-					textNode = document.createTextNode(buffer);
-					newnodes.push(textNode);
-					buffer = '';
-				}				
-				span = document.createElement('span');
-				span.setAttribute('class', 'hk_hoverable');
-				span.innerText = c;
-				newnodes.push(span);
-			} else {
-				buffer += c;
-			}
-		}
-
-		if(buffer != '') {
-			textNode = document.createTextNode(buffer);
-			newnodes.push(textNode);
-			buffer = '';
-		}				
-
-		newnodes.forEach(function(newnode) {
-			parent.insertBefore(newnode, node);
-		});
-		
+		wrapKanji(node);
 	});
 
 	nodes.forEach(function(node) {
 		parent = node.parentNode;
 		parent.removeChild(node);
-	});
-	
+	});	
+	bindMutationObserver();
 }
 
-function makePopup(data) {
-	popup = document.getElementById('hk_popup');
+function unwrapAllKanji() {
+	clearMutationObserver();
+	hk_xpath = "//span[contains(@class, 'hk_hover')]";
+	hks = document.evaluate(hk_xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
 	
+	reps = []
+	
+	while(hk=hks.iterateNext()) {
+		text = document.createTextNode(hk.innerText);
+		reps.push([hk, text]);
+	}
+
+	for(i=0; i<reps.length; i++) {
+		hk = reps[i][0];
+		text = reps[i][1];
+		hk.parentElement.replaceChild(text, hk);
+	}
+	
+	document.normalize();
+	bindMutationObserver();
+}
+
+function initPopup() {
+	body = document.getElementsByTagName('body')[0];
+	popup = document.createElement('div');
+	popup.setAttribute('id', 'hk_popup');
+	body.appendChild(popup);	
+}
+
+function fillPopup(data) {
+	clearMutationObserver();
+	
+	popup = document.getElementById('hk_popup');
 	//console.log(JSON.stringify(data));
 	
 	if(data) {
@@ -96,15 +154,13 @@ function makePopup(data) {
 	} else {
 		popup.innerHTML = 'loading...';		
 	}
-	
-
+	bindMutationObserver();
 }
 
 function showPopup(span) {
 	popup.style.left = (span.getBoundingClientRect().right + window.scrollX).toString() + 'px';
 	popup.style.top = (span.getBoundingClientRect().bottom + window.scrollY).toString() + 'px';
 	popup.style.display = 'block';
-
 }
 
 function requestListener() {
@@ -152,18 +208,38 @@ function requestListener() {
 			context = '_nocontext_';
 			
 			hl = ol.previousElementSibling.previousElementSibling;
-			console.log(hl.tagName);
+//			console.log(hl.tagName);
 			
-			if(hl.tagName == 'H4') {
+			if(hl && hl.tagName == 'H4') {
 				context = hl.children[0].innerText;
+				if(context == 'References') {
+					continue;
+				}
 			}
 			
 			ol.childNodes.forEach(function(li) {
 				if(li instanceof HTMLElement) {
+					tr = '';
+					li.childNodes.forEach(function(node) {
+						if(node instanceof HTMLElement && !node.classList.contains('HQToggle') && !['UL', 'DL'].includes(node.tagName)) {
+							tr += node.innerText;
+						} else if(node.nodeType == Node.TEXT_NODE) {
+							tr += node.textContent;
+						}
+					});					
+					
+					if(/{{rfdef}}/.test(tr)) {
+						return;
+					}
 					if(!(context in data[key].translations)) {
 						data[key].translations[context] = [];
 					}
-					data[key].translations[context].push(li.innerText);				
+					
+					tr = tr.trim();
+					
+					if(!(data[key].translations[context].includes(tr))) {
+						data[key].translations[context].push(tr);			
+					}					
 				}
 			});
 		}
@@ -184,6 +260,7 @@ function requestListener() {
 			ul.childNodes.forEach(function(li) {
 				if(li instanceof HTMLElement) {
 					type = li.firstElementChild.firstElementChild.innerText;
+
 					if(!(type in data[key].readings)) {
 						data[key].readings[type] = [];
 					}
@@ -193,10 +270,10 @@ function requestListener() {
 					if(yomi.firstElementChild.tagName == 'MARK') {
 						yomi = yomi.firstElementChild;
 					}
-					console.log(yomi);
+					//console.log(yomi);
 					yomi.childNodes.forEach(function(sp) {
 						if(sp instanceof HTMLElement && sp.classList.contains('Hira')) {
-							console.log('got a reading');
+							//console.log('got a reading');
 							data[key].readings[type].push(sp.innerText);
 						}						
 					});
@@ -205,7 +282,7 @@ function requestListener() {
 			
 		}
 		
-		if(chrome.storage) {
+		try {
 			chrome.storage.local.set(data, function() {
 				if (chrome.extension.lastError) {
 					console.log('An error occurred: ' + chrome.extension.lastError.message);
@@ -215,11 +292,11 @@ function requestListener() {
 					});
 				}
 			});
-		} else {
-			console.log('chrome.storage is unavailable');
+		} catch(e) {
+			console.log('An exception occurred: ' + e);
 		}
 		
-		makePopup(data[key]);
+		fillPopup(data[key]);
 	}
 }
 
@@ -235,30 +312,56 @@ function showKanjiData(kanji, span) {
       		xhr.addEventListener('load', requestListener);
 			xhr.open('GET', url);
 			xhr.send();
-			makePopup(null);
+			fillPopup(null);
 			showPopup(span);
 		} else {
 			//console.log('found data for key ' + key);
-			makePopup(data[key]);
+			fillPopup(data[key]);
 			showPopup(span);
 		}		
 	});
 	
 }
 
+function initSchedule() {
+	
+	timerId = setTimeout(function refresh() {
+		setTimeout(refresh, 5000);
+		//console.log('tick');
+		key = 'mutated'
+		chrome.storage.local.get(key, function(data) {
+			if(typeof(data[key]) === 'undefined') {
+				//console.log('no mutation found');				
+			} else {
+				//console.log('mutation found');
+				unwrapAllKanji();
+				wrapAllKanji();
+				bindMouseEvents();
+				chrome.storage.local.remove(key, function() {});				
+			}
+		});
+	}, 5000);
+	
+}
+
+function bindMutationObserver() {
+	
+	ocf = { subtree: true, childList : true, characterData : true };
+	
+	obs.observe(document.body, ocf);
+}
+
+function clearMutationObserver() {
+	obs.disconnect();
+}
+
 function bindMouseEvents() {
-	body = document.getElementsByTagName('body')[0];
-	popup = document.createElement('div');
-	popup.setAttribute('id', 'hk_popup');
-	body.appendChild(popup);
 
-	allkanjispans = document.querySelectorAll('span.hk_hoverable');
+	allKanjiSpans = document.querySelectorAll('span.hk_hoverable');
 
-	Array.from(allkanjispans).forEach(function(span) {
+	Array.from(allKanjiSpans).forEach(function(span) {
 		span.addEventListener('mouseover', function () {
 			kanji = span.innerText;
-			//console.log(kanji);
-			
 			showKanjiData(kanji, span);
 		});
 
@@ -270,18 +373,8 @@ function bindMouseEvents() {
 	});	
 };
 
-wrapKanji(document);
+initPopup();
+wrapAllKanji();
+bindMutationObserver();
 bindMouseEvents();
-
-/*
-key = 'test';
-data = {}
-data[key] = 'value';
-
-chrome.storage.local.set(data, function(){
-    chrome.storage.local.get(key, function(obj){
-        console.log(JSON.stringify(obj));
-        console.log(obj.myKey);
-    });
-});
-*/
+initSchedule();
